@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
 import tensorflow as tf
@@ -41,10 +41,15 @@ def preprocess_image(image):
     return np.expand_dims(image, axis=0)
 
 
-@app.get("/")
-async def root():
-    return {"message": "Сервер работает"}
-
+@app.api_route("/", methods=["GET", "HEAD"])
+async def root(request: Request):
+    print(f"Получен {request.method} запрос на /")
+    return {
+        "message": "Сервер работает",
+        "endpoints": {
+            "predict": "/predict (POST)"
+        }
+    }
 
 @app.post("/predict/")
 async def predict(file: UploadFile = File(...)):
