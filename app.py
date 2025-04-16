@@ -1,36 +1,65 @@
 import streamlit as st
 import requests
-import matplotlib.pyplot as plt
 from PIL import Image
-import numpy as np
+from io import BytesIO
+import matplotlib.pyplot as plt
 
-# Настройки
+# Конфигурация
 API_URL = "https://nine-laba.onrender.com/predict/"
 CLASS_NAMES = ['cat', 'dog', 'panda']
+MAX_FILE_SIZE = 2 * 1024 * 1024  # 2MB
 
-# Интерфейс
 st.title("Классификация изображений 🐱🐶🐼")
-uploaded_file = st.file_uploader("Загрузите изображение", type=['jpg', 'png', 'jpeg'])
+st.markdown("Загрузите изображение кошки, собаки или панды")
 
-if uploaded_file is not None:
-    # Превью изображения
-    image = Image.open(uploaded_file)
-    st.image(image, caption='Загруженное изображение', width=300)
 
-    # Отправка на API
-    files = {"file": uploaded_file.getvalue()}
-    response = requests.post(API_URL, files=files)
+def main():
+    uploaded_file = st.file_uploader(
+        "Выберите изображение",
+        type=['jpg', 'jpeg', 'png'],
+        accept_multiple_files=False
+    )
 
-    if response.status_code == 200:
-        result = response.json()
+    if uploaded_file is not None:
+        try:
+            # Проверка размера файла
+            if uploaded_file.size > MAX_FILE_SIZE:
+                st.error(f"Файл слишком большой (максимум {MAX_FILE_SIZE // 1024 // 1024}MB)")
+                return
 
-        # Отображение результатов
-        st.success(f"**Результат:** {result['class']}")
+            # Превью изображения
+            image = Image.open(uploaded_file)
+            st.image(image, caption='Загруженное изображение', use_column_width=True)
 
-        # Визуализация вероятностей
-        fig, ax = plt.subplots()
-        ax.bar(result['probabilities'].keys(), result['probabilities'].values())
-        ax.set_title("Вероятности классов")
-        st.pyplot(fig)
-    else:
-        st.error("Ошибка API")
+            # Отправка на API
+            with st.spinner("Анализируем изображение..."):
+                files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
+                response = requests.post(
+                    API_URL,
+                    files=files,
+                    timeout=10  # Таймаут 10 секунд
+                )
+
+            # Обработка ответа
+            if response.status_code == 200:
+                result = response.json()
+                st.success(f"**Результат:** {result['class']}")
+
+                # Визуализация
+                fig, ax = plt.subplots()
+                ax.bar(result['probabilities'].keys(), result['probabilities'].values())
+                ax.set_ylabel("Вероятность")
+                ax.set_title("Распределение вероятностей")
+                st.pyplot(fig)
+
+            else:
+                st.error(f"Ошибка API: {response.status_code} - {response.text}")
+
+        except requests.exceptions.RequestException as e:
+            st.error(f"Ошибка соединения: {str(e)}")
+        except Exception as e:
+            st.error(f"Ошибка обработки: {str(e)}")
+
+
+if __name__ == "__main__":
+    main()
