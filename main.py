@@ -23,7 +23,7 @@ class_names = ['cat', 'dog', 'panda']
 def load_model():
     global model
     if model is None:
-        model_path = "model.keras"
+        model_path = "model.h5"
 
         # Отладочная информация
         print("Текущая рабочая директория:", os.getcwd())
@@ -75,5 +75,4 @@ async def predict(file: UploadFile = File(...)):
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
