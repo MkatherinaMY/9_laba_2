@@ -69,7 +69,12 @@ async def health_check():
         }
     }
 
-
+@app.get("/test")
+async def test_endpoint():
+    return {
+        "status": "OK",
+        "model_ready": model is not None
+    }
 @app.post("/predict/")
 async def predict(file: UploadFile = File(...)):
     try:
