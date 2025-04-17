@@ -7,31 +7,6 @@ import io
 import os
 import logging
 
-def load_model():
-    global model
-    if model is None:
-        try:
-            if not os.path.exists(MODEL_PATH):
-                raise FileNotFoundError(f"Model file {MODEL_PATH} not found")
-
-            model = tf.keras.models.load_model(MODEL_PATH)
-            logger.info(f"Model loaded. TF version: {tf.__version__}")
-
-            # Тестовый прогон для проверки
-            test_input = np.random.rand(1, 224, 224, 3)
-            model.predict(test_input)
-        except Exception as e:
-            logger.error(f"Model loading failed: {str(e)}")
-            raise
-    return model
-def validate_image(file: UploadFile):
-    if file.content_type not in ALLOWED_CONTENT_TYPES:
-        raise HTTPException(400, "Invalid file type")
-
-    if file.size > MAX_FILE_SIZE:
-        raise HTTPException(400, f"File too large. Max size: {MAX_FILE_SIZE} bytes")
-
-model = load_model()
 # Настройка логгера
 logger = logging.getLogger("uvicorn")
 
@@ -50,7 +25,35 @@ CLASS_NAMES = ['cat', 'dog', 'panda']
 MAX_FILE_SIZE = 2 * 1024 * 1024  # 2MB
 ALLOWED_CONTENT_TYPES = ["image/jpeg", "image/png"]
 
-#model = None
+model = None
+
+
+def load_model():
+    global model
+    if model is None:
+        try:
+            if not os.path.exists(MODEL_PATH):
+                raise FileNotFoundError(f"Model file {MODEL_PATH} not found")
+
+            model = tf.keras.models.load_model(MODEL_PATH)
+            logger.info(f"Model loaded. TF version: {tf.__version__}")
+
+            # Тестовый прогон для проверки
+            test_input = np.random.rand(1, 224, 224, 3)
+            model.predict(test_input)
+        except Exception as e:
+            logger.error(f"Model loading failed: {str(e)}")
+            raise
+    return model
+
+
+def validate_image(file: UploadFile):
+    if file.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(400, "Invalid file type")
+
+    if file.size > MAX_FILE_SIZE:
+        raise HTTPException(400, f"File too large. Max size: {MAX_FILE_SIZE} bytes")
+
 
 @app.api_route("/", methods=["GET", "HEAD"])
 async def health_check():

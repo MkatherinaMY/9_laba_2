@@ -37,7 +37,7 @@ def main():
                 response = requests.post(
                     API_URL,
                     files=files,
-                    timeout=300  # Таймаут 10 секунд
+                    timeout=300
                 )
 
             # Обработка ответа
