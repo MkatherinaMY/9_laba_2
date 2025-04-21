@@ -6,7 +6,7 @@ from PIL import Image
 import io
 import os
 import logging
-
+#(чтобы потом разбираться, что пошло не так) потому что иначе не поймешь ничего
 logger = logging.getLogger("uvicorn.error")
 
 app = FastAPI()
@@ -19,9 +19,9 @@ app.add_middleware(
 )
 
 # Конфигурация
-MODEL_PATH = "model2.keras"
+MODEL_PATH = "animal_classifier.keras"
 CLASS_NAMES = ['cat', 'dog', 'panda']
-MAX_FILE_SIZE = 2 * 1024 * 1024  # 2MB
+MAX_FILE_SIZE = 2 * 1024 * 1024  # было сделано, чтобы сервак не рухнул, но он все равно рухнул
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
 
 model = None
@@ -35,13 +35,13 @@ def load_model():
         model = tf.keras.models.load_model(MODEL_PATH)
         logger.info(f"Model loaded. TF version: {tf.__version__}")
     return model
-
+# Проверка картинки перед обработкой (чтобы не сломать сервер) (спойлер: он все равно сломался)
 def validate_image(file: UploadFile, content: bytes):
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(400, "Invalid file type. Only JPEG, PNG supported.")
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(400, f"File too large. Maximum is {MAX_FILE_SIZE // (1024*1024)}MB.")
-
+#ничего инетерного
 def preprocess_image(image: Image.Image):
     try:
         image = image.convert('RGB')
@@ -53,11 +53,11 @@ def preprocess_image(image: Image.Image):
     except Exception as e:
         logger.error(f"Image processing error: {str(e)}")
         raise HTTPException(400, "Invalid image format or corrupt image.")
-
+# Загружаем модель при старте сервера (чтобы потом не тормозить, но сервак рендер не выдерживает такого нахальства, а иначе сервак засыпает и потом отваливается фронтенд)
 @app.on_event("startup")
 async def startup_event():
     load_model()
-
+# Проверка здоровья сервера (чтобы знать, что он живой)(спойлер: он был долго не живой)
 @app.get("/", tags=["health"])
 async def health_check():
     return {
@@ -97,3 +97,5 @@ async def predict(file: UploadFile = File(...)):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+    # 0.0.0.0 - значит слушаем все интерфейсы (шпиён)
