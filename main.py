@@ -7,15 +7,14 @@ import io
 import os
 import logging
 
-# Настройка логгера
-logger = logging.getLogger("uvicorn")
+logger = logging.getLogger("uvicorn.error")
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["POST", "GET"],
+    allow_methods=["POST", "GET", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -23,99 +22,78 @@ app.add_middleware(
 MODEL_PATH = "model2.keras"
 CLASS_NAMES = ['cat', 'dog', 'panda']
 MAX_FILE_SIZE = 2 * 1024 * 1024  # 2MB
-ALLOWED_CONTENT_TYPES = ["image/jpeg", "image/png"]
+ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
 
 model = None
-
 
 def load_model():
     global model
     if model is None:
-        try:
-            if not os.path.exists(MODEL_PATH):
-                raise FileNotFoundError(f"Model file {MODEL_PATH} not found")
-
-            model = tf.keras.models.load_model(MODEL_PATH)
-            logger.info(f"Model loaded. TF version: {tf.__version__}")
-
-            # Тестовый прогон для проверки
-            test_input = np.random.rand(1, 224, 224, 3)
-            model.predict(test_input)
-        except Exception as e:
-            logger.error(f"Model loading failed: {str(e)}")
-            raise
+        if not os.path.exists(MODEL_PATH):
+            logger.error(f"Модель не найдена по пути {MODEL_PATH}")
+            raise FileNotFoundError(f"Model file {MODEL_PATH} not found")
+        model = tf.keras.models.load_model(MODEL_PATH)
+        logger.info(f"Model loaded. TF version: {tf.__version__}")
     return model
 
-
-def validate_image(file: UploadFile):
+def validate_image(file: UploadFile, content: bytes):
     if file.content_type not in ALLOWED_CONTENT_TYPES:
-        raise HTTPException(400, "Invalid file type")
+        raise HTTPException(400, "Invalid file type. Only JPEG, PNG supported.")
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(400, f"File too large. Maximum is {MAX_FILE_SIZE // (1024*1024)}MB.")
 
-    if file.size > MAX_FILE_SIZE:
-        raise HTTPException(400, f"File too large. Max size: {MAX_FILE_SIZE} bytes")
+def preprocess_image(image: Image.Image):
+    try:
+        image = image.convert('RGB')
+        image = image.resize((224, 224))
+        image_array = np.array(image)
+        image_array = np.expand_dims(image_array, axis=0)
+        processed = tf.keras.applications.mobilenet_v2.preprocess_input(image_array)
+        return processed
+    except Exception as e:
+        logger.error(f"Image processing error: {str(e)}")
+        raise HTTPException(400, "Invalid image format or corrupt image.")
 
+@app.on_event("startup")
+async def startup_event():
+    load_model()
 
-@app.api_route("/", methods=["GET", "HEAD"])
+@app.get("/", tags=["health"])
 async def health_check():
     return {
         "status": "OK",
         "endpoints": {
             "predict": {
                 "method": "POST",
-                "path": "/predict",
+                "path": "/predict/",
                 "input": "image/jpeg or image/png",
                 "max_size": "2MB"
             }
         }
     }
 
-@app.get("/test")
-async def test_endpoint():
-    return {
-        "status": "OK",
-        "model_ready": model is not None
-    }
 @app.post("/predict/")
 async def predict(file: UploadFile = File(...)):
+    contents = await file.read()
+    validate_image(file, contents)
+    mdl = load_model()
+    image = Image.open(io.BytesIO(contents))
+    processed_image = preprocess_image(image)
     try:
-        # Валидация файла
-        validate_image(file)
-
-        # Загрузка модели
-        model = load_model()
-
-        # Чтение и обработка изображения
-        contents = await file.read()
-        image = Image.open(io.BytesIO(contents)).convert('RGB')
-        processed_image = preprocess_image(image)
-
-        # Предсказание
-        predictions = model.predict(processed_image)
-
+        predictions = mdl.predict(processed_image)
+        out_probs = predictions[0].astype(float)
+        result_class_index = int(np.argmax(out_probs))
         return {
-            "class": CLASS_NAMES[np.argmax(predictions)],
+            "class": CLASS_NAMES[result_class_index],
             "probabilities": {
                 cls: float(prob)
-                for cls, prob in zip(CLASS_NAMES, predictions[0])
+                for cls, prob in zip(CLASS_NAMES, out_probs)
             }
         }
-
     except Exception as e:
-        logger.error(f"Error processing request: {str(e)}")
+        logger.error(f"Prediction error: {str(e)}")
         raise HTTPException(500, f"Processing error: {str(e)}")
-
-
-def preprocess_image(image: Image.Image):
-    try:
-        image = image.resize((224, 224))
-        image_array = np.array(image)
-        return tf.keras.applications.mobilenet_v2.preprocess_input(image_array)
-    except Exception as e:
-        logger.error(f"Image processing error: {str(e)}")
-        raise HTTPException(400, "Invalid image format")
-
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=8000)
